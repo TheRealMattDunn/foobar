@@ -46,6 +46,13 @@ public class Solution {
             return new Fraction(numer, denom);
         }
 
+        public Fraction subtract(Fraction that) {
+            int numer = (this.numer * that.denom) - (that.numer * this.denom);
+            int denom = that.denom * this.denom;
+
+            return new Fraction(numer, denom);
+        }
+
         @Override
         public String toString() {
             return numer + "/" + denom;
@@ -75,71 +82,9 @@ public class Solution {
         }
 
         @Override
-        protected Object clone() throws CloneNotSupportedException {
+        protected Fraction clone() throws CloneNotSupportedException {
             return new Fraction(numer, denom);
         }
-    }
-
-    public static int[] solution(int[][] m) {
-        Fraction[][] transMatrix = new Fraction[m.length][m[0].length];
-
-        for (int i = 0; i < m.length; i++) {
-            int stateSum = 0;
-
-            for (int j = 0; j < m[i].length; j++) {
-                stateSum += m[i][j];
-            }
-
-            if (stateSum > 0) {
-                for (int j = 0; j < m[i].length; j++) {
-                    transMatrix[i][j] = new Fraction(m[i][j], stateSum);
-                }
-            } else {
-                for (int j = 0; j < m[i].length; j++) {
-                    int numer = i == j ? 1 : 0;
-                    transMatrix[i][j] = new Fraction(numer, 1);
-                }
-            }
-        }
-
-        System.out.println(Arrays.deepToString(transMatrix));
-
-        Fraction[][] solutionMatrix = transMatrix;
-        Fraction[][] prev = solutionMatrix;
-
-        do {
-            prev = solutionMatrix;
-            solutionMatrix = multiply(solutionMatrix, transMatrix);
-        } while (!Arrays.deepEquals(prev, solutionMatrix));
-
-        System.out.println(Arrays.deepToString(solutionMatrix));
-
-        Fraction[] absorbProbs = getAbsorbProbs(0, getAbsorbStates(transMatrix), solutionMatrix);
-        System.out.println(Arrays.deepToString(absorbProbs));
-
-        int[] denoms = new int[absorbProbs.length];
-
-        for (int i = 0; i < absorbProbs.length; i++) {
-            denoms[i] = absorbProbs[i].denom;
-        }
-
-        int lcm = lcm(denoms);
-
-        System.out.println(lcm);
-
-        int[] ans = new int[absorbProbs.length + 1];
-
-        for (int i = 0; i < absorbProbs.length; i++) {
-            Fraction prob = absorbProbs[i];
-
-            ans[i] = prob.numer * lcm / prob.denom;
-        }
-
-        ans[ans.length - 1] = lcm;
-
-        System.out.println(Arrays.toString(ans));
-
-        return ans;
     }
 
     private static Fraction[][] multiply(Fraction[][] a, Fraction[][] b) {
@@ -169,9 +114,21 @@ public class Solution {
             }
         }
 
-        System.out.println(Arrays.deepToString(c));
-
         return c;
+    }
+
+    private static Fraction[][] subtract(Fraction[][] a, Fraction[][] b) {
+        // TODO - check matrices are same size
+
+        Fraction[][] ans = new Fraction[a.length][a[0].length];
+
+        for (int i = 0; i < a.length; i++) {
+            for (int j = 0; j < a[0].length; j++) {
+                ans[i][j] = a[i][j].subtract(b[i][j]);
+            }
+        }
+
+        return ans;
     }
 
     private static Fraction[][] invert(Fraction[][] matrix) {
@@ -211,33 +168,101 @@ public class Solution {
         return inverted;
     }
 
-    private static Fraction[][] getCanonicalMatrix(Fraction[][] matrix) {
-        Fraction[][] clone = Arrays.stream(matrix).map(el -> el.clone()).toArray($ -> matrix.clone());
+    private static Fraction[][] getBMatrix(Fraction[][] transitionMatrix) {
+        int[] absorbStates = getAbsorbStates(transitionMatrix);
 
-        int[] absorbStates = getAbsorbStates(clone);
+        List<List<Fraction>> bList = new ArrayList<>();
 
-        Fraction[][] canonical = new Fraction[clone.length][clone[0].length];
+        for (int i = 0; i < transitionMatrix.length; i++) {
+            int rowNum = i;
 
-        // Put the abosorbing states at the top of the matrix
-        for(int i = 0; i < absorbStates.length; i++) {
-            for(int j = 0; j < clone[0].length; j++) {
-                canonical[i][j] = clone[absorbStates[i]][j];
-            }
-        }
+            if (!(IntStream.of(absorbStates).anyMatch(x -> x == rowNum))) {
+                List<Fraction> row = new ArrayList<>();
 
-        // Now list the remaining rows
-        for(int i = 0, nextRow = absorbStates.length; i < clone.length; i++) {
-            int match = i;
-            
-            if(! IntStream.of(absorbStates).anyMatch(x -> x == match)) {
-                for(int j = 0; j < clone[0].length; j++) {
-                    canonical[nextRow][j] = clone[i][j];
+                for (int j = 0; j < transitionMatrix[0].length; j++) {
+                    int colNum = j;
+
+                    if (!(IntStream.of(absorbStates).anyMatch(x -> x == colNum))) {
+                        try {
+                            row.add(transitionMatrix[i][j].clone());
+                        } catch (CloneNotSupportedException exception) {
+                            throw new AssertionError(exception);
+                        }
+                    }
                 }
-                nextRow++;
+
+                bList.add(row);
             }
         }
 
-        return canonical;
+        Fraction[][] b = new Fraction[bList.size()][];
+        for (int i = 0; i < bList.size(); i++) {
+            List<Fraction> row = bList.get(i);
+            b[i] = row.toArray(new Fraction[row.size()]);
+        }
+
+        return b;
+    }
+
+    private static Fraction[][] getFundamentalMatrix(Fraction[][] bMatrix) {
+        Fraction[][] identity = new Fraction[bMatrix.length][bMatrix[0].length];
+
+        for (int i = 0; i < bMatrix.length; i++) {
+            for (int j = 0; j < bMatrix[0].length; j++) {
+                identity[i][j] = i == j ? new Fraction(1, 1) : new Fraction(0, 1);
+            }
+        }
+
+        Fraction[][] inverseFundamental = subtract(identity, bMatrix);
+        Fraction[][] fundamental = invert(inverseFundamental);
+
+        System.out.println(Arrays.deepToString(identity));
+        System.out.println(Arrays.deepToString(inverseFundamental));
+        System.out.println(Arrays.deepToString(fundamental));
+
+        return fundamental;
+    }
+
+    private static Fraction[][] getAMatrix(Fraction[][] transitionMatrix) {
+        int[] absorbStates = getAbsorbStates(transitionMatrix);
+
+        List<List<Fraction>> aList = new ArrayList<>();
+
+        for (int i = 0; i < transitionMatrix.length; i++) {
+            int rowNum = i;
+
+            if (!(IntStream.of(absorbStates).anyMatch(x -> x == rowNum))) {
+                List<Fraction> row = new ArrayList<>();
+
+                for (int j = 0; j < transitionMatrix[0].length; j++) {
+                    int colNum = j;
+
+                    if ((IntStream.of(absorbStates).anyMatch(x -> x == colNum))) {
+                        try {
+                            row.add(transitionMatrix[i][j].clone());
+                        } catch (CloneNotSupportedException exception) {
+                            throw new AssertionError(exception);
+                        }
+                    }
+                }
+
+                aList.add(row);
+            }
+        }
+
+        Fraction[][] a = new Fraction[aList.size()][];
+        for (int i = 0; i < aList.size(); i++) {
+            List<Fraction> row = aList.get(i);
+            a[i] = row.toArray(new Fraction[row.size()]);
+        }
+
+        return a;
+    }
+
+    private static Fraction[][] getSolutionMatrix(Fraction[][] fundamentalMatrix, Fraction[][] aMatrix) {
+        Fraction[][] solution = multiply(fundamentalMatrix, aMatrix);
+
+        return solution;
     }
 
     private static int[] getAbsorbStates(Fraction[][] transitionMatrix) {
@@ -286,37 +311,224 @@ public class Solution {
         return ans;
     }
 
+    public static int[] solution(int[][] m) {
+        // // Check for the all zeros case
+        // int[][] zeroMatrix = new int[m.length][m[0].length];
+
+        // if(Arrays.deepEquals(m, zeroMatrix)) {
+        // int[] ans = new int[m[0].length + 1];
+        // ans[0] = 1;
+        // ans[ans.length - 1] = 1;
+        // return ans;
+        // }
+
+        Fraction[][] transMatrix = new Fraction[m.length][m[0].length];
+
+        for (int i = 0; i < m.length; i++) {
+            int stateSum = 0;
+
+            for (int j = 0; j < m[i].length; j++) {
+                stateSum += m[i][j];
+            }
+
+            if (stateSum > 0) {
+                for (int j = 0; j < m[i].length; j++) {
+                    transMatrix[i][j] = new Fraction(m[i][j], stateSum);
+                }
+            } else {
+                for (int j = 0; j < m[i].length; j++) {
+                    int numer = i == j ? 1 : 0;
+                    transMatrix[i][j] = new Fraction(numer, 1);
+                }
+            }
+        }
+
+        // Check for the case where all states are capturing
+        Fraction[][] identityMatrix = new Fraction[transMatrix.length][transMatrix[0].length];
+
+        for (int i = 0; i < transMatrix.length; i++) {
+            for (int j = 0; j < transMatrix[0].length; j++) {
+                identityMatrix[i][j] = i == j ? new Fraction(1, 1) : new Fraction(0, 1);
+            }
+        }
+
+        if (Arrays.deepEquals(transMatrix, identityMatrix)) {
+            int[] ans = new int[m[0].length + 1];
+            ans[0] = 1;
+            ans[ans.length - 1] = 1;
+            return ans;
+        }
+
+        Fraction[][] b = getBMatrix(transMatrix);
+        Fraction[][] fundamental = getFundamentalMatrix(b);
+        Fraction[][] a = getAMatrix(transMatrix);
+        Fraction[][] solution = getSolutionMatrix(fundamental, a);
+
+        System.out.println(Arrays.deepToString(b));
+        System.out.println(Arrays.deepToString(fundamental));
+        System.out.println(Arrays.deepToString(a));
+        System.out.println(Arrays.deepToString(solution));
+
+        Fraction[] absorbProbs = solution[0];
+        int[] denoms = new int[absorbProbs.length];
+
+        for (int i = 0; i < absorbProbs.length; i++) {
+            denoms[i] = absorbProbs[i].denom;
+        }
+
+        int lcm = lcm(denoms);
+
+        int[] ans = new int[absorbProbs.length + 1];
+
+        for (int i = 0; i < absorbProbs.length; i++) {
+            Fraction prob = absorbProbs[i];
+
+            ans[i] = prob.numer * lcm / prob.denom;
+        }
+
+        ans[ans.length - 1] = lcm;
+
+        return ans;
+    }
+
     public static void main(String[] args) {
-        testFractionMultiply();
-        testFractionAdd();
-        testMatrixMultiply();
-        testMatrixInvert();
-        testGetAbsorbStates();
-        testGetAbsorbProbs();
-        testGcd();
-        testLcm();
-        testGetCanonicalMatrix();
+        // testFractionMultiply();
+        // testFractionAdd();
+        // testMatrixMultiply();
+        // testMatrixInvert();
+        // testGetAbsorbStates();
+        // testGetAbsorbProbs();
+        // testGcd();
+        // testLcm();
+        // testGetFundamentalMatrix();
 
         // int[][] testCase1 = {
-        // { 0, 2, 1, 0, 0 },
-        // { 0, 0, 0, 3, 4 },
-        // { 0, 0, 0, 0, 0 },
-        // { 0, 0, 0, 0, 0 },
-        // { 0, 0, 0, 0, 0 }
+        //         { 0, 2, 1, 0, 0 },
+        //         { 0, 0, 0, 3, 4 },
+        //         { 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0 }
         // };
 
         // System.out.println(Arrays.toString(solution(testCase1)));
 
-        int[][] testCase2 = {
-                { 0, 1, 0, 0, 0, 1 },
-                { 4, 0, 0, 3, 2, 0 },
-                { 0, 0, 0, 0, 0, 0 },
-                { 0, 0, 0, 0, 0, 0 },
-                { 0, 0, 0, 0, 0, 0 },
-                { 0, 0, 0, 0, 0, 0 }
-        };
+        // int[][] testCase2 = {
+        //         { 0, 1, 0, 0, 0, 1 },
+        //         { 4, 0, 0, 3, 2, 0 },
+        //         { 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0 }
+        // };
 
         // System.out.println(Arrays.toString(solution(testCase2)));
+
+        // int[][] testCase3 = {
+        //         { 1, 2, 3, 0, 0, 0 },
+        //         { 4, 5, 6, 0, 0, 0 },
+        //         { 7, 8, 9, 1, 0, 0 },
+        //         { 0, 0, 0, 0, 1, 2 },
+        //         { 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase3)));
+
+        // int[][] testCase4 = {
+        //         { 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase4)));
+
+        int[][] testCase5 = {
+                { 0, 0, 12, 0, 15, 0, 0, 0, 1, 8 },
+                { 0, 0, 60, 0, 0, 7, 13, 0, 0, 0 },
+                { 0, 15, 0, 8, 7, 0, 0, 1, 9, 0 },
+                { 23, 0, 0, 0, 0, 1, 0, 0, 0, 0 },
+                { 37, 35, 0, 0, 0, 0, 3, 21, 0, 0 },
+                { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+                { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+                { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+                { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+                { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        };
+
+        System.out.println(Arrays.toString(solution(testCase5)));
+
+        // int[][] testCase6 = {
+        //         { 0, 7, 0, 17, 0, 1, 0, 5, 0, 2 },
+        //         { 0, 0, 29, 0, 28, 0, 3, 0, 16, 0 },
+        //         { 0, 3, 0, 0, 0, 1, 0, 0, 0, 0 },
+        //         { 48, 0, 3, 0, 0, 0, 17, 0, 0, 0 },
+        //         { 0, 6, 0, 0, 0, 1, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase6)));
+
+        // int[][] testCase7 = {
+        //         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase7)));
+
+        // int[][] testCase8 = {
+        //         { 1, 1, 1, 0, 1, 0, 1, 0, 1, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 0, 1, 1, 1, 0, 1, 0, 1, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 0, 1, 0, 1, 1, 1, 0, 1, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 0, 1, 0, 1, 0, 1, 1, 1, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 1, 0, 1, 0, 1, 0, 1, 0, 1, 1 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase8)));
+
+        // int[][] testCase9 = {
+        //         { 0, 86, 61, 189, 0, 18, 12, 33, 66, 39 },
+        //         { 0, 0, 2, 0, 0, 1, 0, 0, 0, 0 },
+        //         { 15, 187, 0, 0, 18, 23, 0, 0, 0, 0 },
+        //         { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase9)));
+
+        // int[][] testCase10 = {
+        //         { 0, 0, 0, 0, 3, 5, 0, 0, 0, 2 },
+        //         { 0, 0, 4, 0, 0, 0, 1, 0, 0, 0 },
+        //         { 0, 0, 0, 4, 4, 0, 0, 0, 1, 1 },
+        //         { 13, 0, 0, 0, 0, 0, 2, 0, 0, 0 },
+        //         { 0, 1, 8, 7, 0, 0, 0, 1, 3, 0 },
+        //         { 1, 7, 0, 0, 0, 0, 0, 2, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+        //         { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+        // };
+
+        // System.out.println(Arrays.toString(solution(testCase10)));
     }
 
     // Rought and ready unit tests
@@ -404,7 +616,7 @@ public class Solution {
         }
     }
 
-    private static void testGetCanonicalMatrix() {
+    private static void testGetFundamentalMatrix() {
         // { 0, 2, 1, 0, 0 },
         // { 0, 0, 0, 3, 4 },
         // { 0, 0, 0, 0, 0 },
@@ -412,24 +624,24 @@ public class Solution {
         // { 0, 0, 0, 0, 0 }
 
         Fraction[][] matrix = {
-            { new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 3), new Fraction(0, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(4, 7) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(1, 1), new Fraction(7, 1) }
+                { new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 3), new Fraction(0, 1), new Fraction(0, 1) },
+                { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1) },
+                { new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1), new Fraction(0, 1) },
+                { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1) },
+                { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 3) }
         };
 
         Fraction[][] ans = {
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 3), new Fraction(0, 1), new Fraction(0, 1) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1), new Fraction(4, 7) },
-            { new Fraction(0, 1), new Fraction(0, 1), new Fraction(1, 1), new Fraction(1, 1), new Fraction(7, 1) }
+                { new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 1) },
+                { new Fraction(0, 1), new Fraction(0, 1), new Fraction(0, 1) },
+                { new Fraction(0, 1), new Fraction(2, 3), new Fraction(1, 3) },
         };
 
-        if(! Arrays.deepEquals(getCanonicalMatrix(matrix), ans)) {
-            throw new AssertionError();
-        }
+        System.out.println(Arrays.deepToString(getFundamentalMatrix(matrix)));
+
+        // if(! Arrays.deepEquals(getFundamentalMatrix(matrix), ans)) {
+        // throw new AssertionError();
+        // }
     }
 
     private static void testGetAbsorbProbs() {
