@@ -5,7 +5,6 @@ import java.util.Arrays;
 public class Solution {
     public static int solution(int[] l) {
         int[] lCopy = Arrays.copyOf(l, l.length);
-        Arrays.sort(lCopy);
         reverse(lCopy);
 
         int count = 0;
@@ -50,7 +49,7 @@ public class Solution {
         System.out.println(Solution.solution(test2)); // 3
 
         int[] test3 = { 6, 3, 2, 5, 4, 1 };
-        System.out.println(Solution.solution(test3)); // 3
+        System.out.println(Solution.solution(test3)); // 0
 
         int[] test4 = { 1, 2, 3 };
         System.out.println(Solution.solution(test4)); // 0
